@@ -87,6 +87,7 @@ namespace at {
 namespace native {
 
 static Tensor & copy_impl(Tensor & self, const Tensor & src, bool non_blocking) {
+  std::cout << "copy.cpp copy_impl()" << std::endl;
   // TODO: this should be handled during dispatch, but that's missing...
   TORCH_CHECK(self.defined(), "self is undefined");
   TORCH_CHECK(src.defined(), "src is undefined");
@@ -126,6 +127,8 @@ static Tensor & copy_impl(Tensor & self, const Tensor & src, bool non_blocking) 
     TORCH_CHECK(false, "Copying from quantized Tensor to non-quantized Tensor is not allowed, please use dequantize to get a float Tensor from a quantized Tensor");
   }
 
+  std::cout << "constructing tensor iterator" << std::endl;
+
   auto iter = TensorIterator();
   iter.set_check_mem_overlap(true);
   iter.add_output(self);
@@ -149,16 +152,20 @@ static Tensor & copy_impl(Tensor & self, const Tensor & src, bool non_blocking) 
     return self;
   }
 
+  std::cout << "calling copy_stub" << std::endl;
   copy_stub(device_type, iter, non_blocking);
+  std::cout << "after copy_stub" << std::endl;
   return self;
 }
 
 Tensor& copy_(Tensor& self, const Tensor& src, bool non_blocking) {
+  std::cout << "Copy.cpp copy_" << std::endl;
   auto maybe_outnames = namedinference::compute_broadcast_outnames(self, src);
   {
     NoNamesGuard guard;
     copy_impl(self, src, non_blocking);
   }
+  std::cout << "Copy.cpp copy_ after copy_impl" << std::endl;
   namedinference::propagate_names_if_nonempty(self, maybe_outnames);
   return self;
 }

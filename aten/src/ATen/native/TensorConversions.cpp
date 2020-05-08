@@ -20,6 +20,7 @@ static inline Device ensure_has_index(Device device) {
 }
 
 static inline Tensor to_impl(const Tensor& self, const TensorOptions& options, bool non_blocking, bool copy) {
+  std::cout << "TensorConversions.cpps to_impl()" << std::endl;
   auto memory_format = options.memory_format_opt().value_or(MemoryFormat::Preserve);
 
   if (self.dtype() == options.dtype() && self.layout() == options.layout() &&
@@ -31,15 +32,18 @@ static inline Tensor to_impl(const Tensor& self, const TensorOptions& options, b
 
   if (memory_format == MemoryFormat::Preserve) {
     if (self.is_non_overlapping_and_dense()) {
+      std::cout << "non overlapping and dense case" << std::endl;
       // Copy all strides
       auto r = at::empty_strided(self.sizes(), self.strides(), options.memory_format(c10::nullopt));
       r.copy_(self, non_blocking);
       return r;
     } else {
+      std::cout << "querying for a mmeory format" << std::endl;
       memory_format = self.suggest_memory_format();
     }
   }
   // See Note [Explicit nullopt MemoryFormat argument]
+  std::cout << "memory format not preserve" << std::endl;
   auto r = at::empty(self.sizes(), options.memory_format(memory_format), c10::nullopt);
   r.copy_(self, non_blocking);
   return r;
@@ -52,6 +56,7 @@ Tensor to(
   bool copy,
   c10::optional<c10::MemoryFormat> optional_memory_format
 ) {
+  std::cout << "TensorConversions.cpp to()" << std::endl;
   TORCH_CHECK(
     !(options_.has_memory_format() && optional_memory_format.has_value()),
     "Cannot set memory_format both in TensorOptions and explicit argument; please delete "
@@ -68,6 +73,7 @@ Tensor to(
            " and options.layout set as ", options.layout());
 
   if (options.has_device()) {
+    std::cout << "Options has device" << std::endl;
     options = options.device(ensure_has_index(options.device()));
   }
   auto specified_options = self.options().merge_in(options);

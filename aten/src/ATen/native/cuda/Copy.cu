@@ -20,6 +20,7 @@ using namespace at::cuda;
 
 // device-to-device copy, does type conversion
 void copy_device_to_device(TensorIterator& iter, bool non_blocking) {
+  std::cout << "copy.cu copy_device_to_device()" << std::endl;
   int64_t numel = iter.numel();
 
   // We can memcpy the memory if both tensors have the same type AND both
@@ -48,23 +49,29 @@ void copy_device_to_device(TensorIterator& iter, bool non_blocking) {
     CUDAEvent dst_ready;
     device_guard.set_device(dst_device);
     dst_ready.record(getCurrentCUDAStream(dst_device.index()));
+    std::cout << "recording on dst device" << std::endl;
 
     device_guard.set_device(src_device);
     dst_ready.block(copy_stream);
+    std::cout << "blocking copy_stream on dst_ready" << std::endl;
   }
 
   if (memcpy_eligible) {
+    std::cout << "memcpy_eligible" << std::endl;
     void *dst = iter.data_ptr(0);
     void *src = iter.data_ptr(1);
     size_t size = numel * iter.element_size(0);
     if (src != dst || src_device != dst_device) {
       // Perform the copy
+      std::cout << "Calling cudamemcpyasync" << std::endl;
       AT_CUDA_CHECK(cudaMemcpyAsync(
           dst, src, size,
           cudaMemcpyDeviceToDevice,
           copy_stream));
+          std::cout << "After cudamemcpyasync" << std::endl;
     }
   } else {
+    std::cout << "not memcpy_eligible" << std::endl;
     auto dtype = iter.dtype(0);
     if (isQIntType(dtype)) {
       AT_DISPATCH_QINT_TYPES(dtype, "copy_", [&] {
@@ -79,18 +86,22 @@ void copy_device_to_device(TensorIterator& iter, bool non_blocking) {
   }
 
   if (src_device != dst_device) {
+    std::cout << "cross-device cleanup" << std::endl;
     // dst waits on src barrier (dst already waits on dst). We cannot
     // operate on dst's copy until the copy is complete.
 
     // Still on src_device, record stream event
     CUDAEvent src_ready;
     src_ready.record(copy_stream);
+    std::cout << "recorded src_ready" << std::endl;
 
     device_guard.set_device(dst_device);
     src_ready.block(getCurrentCUDAStream(dst_device.index()));
+    std::cout << "finished blocking dst_device stream on src_ready" << std::endl;
   }
 
   AT_CUDA_CHECK(cudaGetLastError());
+  std::cout << "returning from copy_device_to_device" << std::endl;
 }
 
 static bool copy_requires_temporaries(TensorIterator& iter, bool p2p_enabled) {
@@ -126,6 +137,7 @@ static bool maybe_enable_p2p_access(Device dst_device, Device src_device) {
 }
 
 static void copy_kernel_cuda(TensorIterator& iter, bool non_blocking) {
+  std::cout << "copy.cu copy_kernel_cuda()" << std::endl;
   AT_ASSERT(iter.ntensors() == 2);
 
   Device dst_device = iter.device(0);
@@ -134,7 +146,10 @@ static void copy_kernel_cuda(TensorIterator& iter, bool non_blocking) {
   // Enable p2p access between devices. (No-op if it involves the CPU)
   bool p2p_enabled = maybe_enable_p2p_access(dst_device, src_device);
 
+  std::cout << "Enabled p2p access" << std::endl;
+
   if (copy_requires_temporaries(iter, p2p_enabled)) {
+    std::cout << "Copy requires temporaries" << std::endl;
     // NB: this involves recursive calls to copy. Be careful that those copies
     // don't require temporaries or you will cause an infinite recursion!
     auto& dst = iter.tensor(0);
@@ -162,11 +177,14 @@ static void copy_kernel_cuda(TensorIterator& iter, bool non_blocking) {
       TORCH_INTERNAL_ASSERT(dst_contig.device() == dst.device());
       dst.copy_(dst_contig, non_blocking);
     }
+
+    std::cout << "Finishing temporary code" << std::endl;
     return;
   }
 
   // Copy on GPU (or between GPUs)
   if (dst_device.is_cuda() && src_device.is_cuda()) {
+    std::cout << "Initiating CUDA device->device" << std::endl;
     copy_device_to_device(iter, non_blocking);
     return;
   }
